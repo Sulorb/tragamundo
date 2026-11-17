@@ -163,8 +163,10 @@ export function thinkBot(h, game) {
         threat = Math.max(threat, w);
         flee.addScaledVector(dirTo(h.pos, o.pos, _a), -w * 2);
       }
-      if (h.bombs > 0 && o.r > Math.max(1.6, h.r * 1.15) && d < 14 + h.r && d > o.r * 0.6 && Math.random() < 0.25 * ai.aggr + (o === game.leader ? 0.2 : 0)) {
-        game.throwBomb(h, dirTo(h.pos, o.pos, _a));
+      // apuntar como humano: solo si es valiente, está a distancia segura y no está apuntando ya
+      if (!ai.aim && h.bombs > 0 && ai.aggr > 0.45 && o.r > Math.max(1.6, h.r * 1.15) && d < 12 + h.r && d > o.r + 3 + h.r
+        && Math.random() < 0.2 * ai.aggr + (o === game.leader ? 0.15 : 0)) {
+        ai.aim = { o, start: now, until: now + 2.5 };
       }
     } else if (h.r > o.r * HOLE_RATIO * 1.03 && !(o.shield > 0)) {
       if (d < Math.min(16 + h.r * 2, 2 + h.r * 8)) {
@@ -209,10 +211,12 @@ export function thinkBot(h, game) {
     dirTo(h.pos, ai.wander, des);
   }
 
-  ai.fleeing = threat > 0.15;
-  if (ai.fleeing) des.multiplyScalar(0.4).add(flee);
+  if (ai.aim && (now > ai.aim.until || !ai.aim.o.alive || !ai.aim.o.solid() || h.bombs <= 0 || surfDist(h.pos, ai.aim.o.pos) < ai.aim.o.r + 1.5)) ai.aim = null;
+  ai.fleeing = threat > 0.15 && !ai.aim;
+  if (ai.aim) dirTo(h.pos, ai.aim.o.pos, des); // se da vuelta para encararlo
+  else if (ai.fleeing) des.multiplyScalar(0.4).add(flee);
   tangentize(des, h.pos);
   if (h.camo === 'none' && h.camoCharge >= CAMO.charge && h.r > 1.5 && (threat > 0.6 || Math.random() < 0.012 * ai.aggr)) game.startCamo(h);
-  h.boost = h.solid() && h.A > 0.6 && ((threat > 0.45) || (bestHole && surfDist(h.pos, bestHole.pos) < 4 + h.r * 2 && ai.aggr > 0.6) || (pack && surfDist(h.pos, pack.pos) > pack.r + 4));
+  h.boost = !ai.aim && h.solid() && h.A > 0.6 && ((threat > 0.45) || (bestHole && surfDist(h.pos, bestHole.pos) < 4 + h.r * 2 && ai.aggr > 0.6) || (pack && surfDist(h.pos, pack.pos) > pack.r + 4));
   void _c;
 }

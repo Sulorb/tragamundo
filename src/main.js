@@ -390,17 +390,19 @@ function explode(p, target) {
   if (nearPlayer(p.pos, 40)) { sfx.boom(); shake = Math.max(shake, 0.6); }
   if (!target) return;
   const o = p.owner;
-  target.stun = 1.3;
+  target.stun = 0.4 + Math.min(0.9, o.r / target.r);
   if (target.r > 1.3) {
-    const lost = target.A * 0.42;
+    // el daño depende del tamaño del que la tira: un chiquito apenas le hace cosquillas a un gigante
+    const frac = Math.max(0.03, Math.min(0.42, 0.42 * (o.r / target.r) * 1.5));
+    const lost = target.A * frac;
     target.setArea(target.A - lost);
     world.scatterDebris(target.pos, target.r, lost * 0.6, Math.max(6, Math.min(70, Math.round(lost * 2.5))));
     target.splits++; o.splits++;
     const pts = 100 + Math.round(lost * 25);
     o.score += pts;
     feed(`💣 <b style="color:${css(o)}">${o.name}</b> partió a <b style="color:${css(target)}">${target.name}</b>`);
-    if (o === player) { popup(player.pos, `💥 +${pts}`, '#ff9d2f'); banner(`💥 ¡Partiste a ${target.name}!`); mission('split'); }
-    if (target === player) banner('💥 ¡Te partieron con una bomba!');
+    if (o === player) { popup(player.pos, `💥 +${pts}`, '#ff9d2f'); banner(`💥 ¡Le quitaste ${Math.round(frac * 100)} % a ${target.name}!`); mission('split'); }
+    if (target === player) banner(`💥 ${o.name} te quitó ${Math.round(frac * 100)} %`);
   }
 }
 
@@ -808,6 +810,16 @@ function tick() {
     if (h.ai.think <= 0) { h.ai.think = 0.22 + Math.random() * 0.15; thinkBot(h, game); }
     steer(h.dir, h.ai.desired, h.pos, h.ai.turn * dt);
     h.throttle = 1;
+    // tira la bomba recién cuando ya lo tiene de frente (y con un poco de error)
+    const aimT = h.ai.aim;
+    if (aimT && game.now - aimT.start > 0.5 && aimT.o.alive) {
+      const want = dirTo(h.pos, aimT.o.pos, _v2);
+      if (h.dir.dot(want) > Math.cos(0.3)) {
+        const err = (Math.random() - 0.5) * 0.25;
+        throwBomb(h, _v3.copy(h.dir).applyAxisAngle(h.pos, err));
+        h.ai.aim = null;
+      }
+    }
   }
 
   let leader = null;
