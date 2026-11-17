@@ -828,7 +828,7 @@ function tick() {
     updateCamo(h, dt);
     if (!h.solid()) h.boost = false;
     if (h.boost && h.A > 0.36) h.setArea(h.A - h.A * 0.03 * dt); else h.boost = false;
-    if (h.r > 8) h.setArea(h.A - dt * h.A * 0.02 * (h.r - 8) / 8); // evaporación de gigantes
+    if (h.r > 14) h.setArea(h.A - dt * h.A * Math.min(0.005, 0.0025 * (h.r - 14) / 14)); // los gigantes se secan apenas: comer siempre gana
     h.stun = Math.max(0, h.stun - dt); h.shield = Math.max(0, h.shield - dt); h.rush = Math.max(0, h.rush - dt);
     h.comboT -= dt; if (h.comboT <= 0) h.combo = 0;
     const sv = h.siege > 0 ? 0.75 : 1;
