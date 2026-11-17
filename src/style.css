@@ -1,0 +1,69 @@
+:root { --fg: #fff; --bg: #05060d; --accent: #00e5ff; --gold: #ffd23a; --red: #ff4d4d; --green: #5dff8f; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: 'Baloo 2', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+#app canvas { display: block; }
+.hidden { display: none !important; }
+
+#labels, #arrows, #popups { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-weight: 800; text-shadow: 0 0 4px #000, 0 0 2px #000; line-height: 1; text-align: center; }
+.lbl .crown { display: block; font-size: 1.1em; margin-bottom: 2px; }
+.arw { position: absolute; width: 0; height: 0; transform-origin: center; }
+.arw::before { content: ''; position: absolute; left: -9px; top: -11px; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 22px solid currentColor; filter: drop-shadow(0 0 3px #000); }
+.arw span { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 3px #000; }
+.pop { position: absolute; transform: translate(-50%, -50%); font-weight: 800; font-size: 20px; text-shadow: 0 2px 4px #000; animation: pop 0.9s ease-out forwards; }
+@keyframes pop { 0% { opacity: 0; transform: translate(-50%, -30%) scale(0.6); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#board { position: absolute; left: 12px; top: 12px; background: #0009; border-radius: 12px; padding: 8px 12px; min-width: 210px; font-size: 14px; }
+#board .row { display: flex; gap: 8px; align-items: center; padding: 1px 0; }
+#board .row.me { color: var(--accent); }
+#board .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#board .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+#board .pt { font-variant-numeric: tabular-nums; opacity: 0.9; }
+#top { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); text-align: center; }
+#timer { font-size: 30px; font-weight: 800; text-shadow: 0 2px 6px #000; }
+#timer.low { color: var(--red); animation: pulse 0.5s infinite alternate; }
+#frenzy { font-weight: 800; color: #ff9d2f; font-size: 20px; animation: pulse 0.4s infinite alternate; }
+@keyframes pulse { to { transform: scale(1.12); } }
+#me { position: absolute; right: 14px; top: 10px; text-align: right; text-shadow: 0 2px 6px #000; }
+#score { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#combo { font-size: 22px; font-weight: 800; color: var(--gold); min-height: 28px; }
+#combo.hot { animation: pulse 0.25s infinite alternate; }
+#mons { font-size: 15px; opacity: 0.9; }
+#feed { position: absolute; right: 14px; top: 150px; width: 300px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+#feed div { background: #000a; padding: 3px 10px; border-radius: 8px; font-size: 13px; animation: fade 6s forwards; }
+@keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+#bottom { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); text-align: center; width: min(460px, 90vw); }
+#title { font-size: 22px; font-weight: 800; text-shadow: 0 2px 6px #000; }
+#bar { height: 12px; background: #0008; border-radius: 6px; overflow: hidden; border: 1px solid #fff3; }
+#barFill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #8f7bff); transition: width 0.2s; }
+#bombs { font-size: 24px; min-height: 32px; margin-top: 4px; }
+#hint { font-size: 12px; opacity: 0.6; }
+#mobileBtns { position: absolute; right: 16px; bottom: 90px; display: none; flex-direction: column; gap: 12px; pointer-events: auto; }
+#mobileBtns button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #fff6; background: #000a; font-size: 28px; }
+@media (pointer: coarse) { #mobileBtns { display: flex; } #hint { display: none; } #board { font-size: 11px; min-width: 150px; } }
+
+#banner { position: fixed; left: 50%; top: 26%; transform: translate(-50%, -50%); font-size: clamp(22px, 4vw, 44px); font-weight: 800; text-align: center; text-shadow: 0 3px 10px #000, 0 0 30px #000; pointer-events: none; opacity: 0; }
+#banner.show { animation: banner 2.6s ease-out forwards; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 10% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 18% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+
+.overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, #0000 0%, #000a 70%); padding: 16px; }
+.card { background: #0b1022e6; border: 1px solid #ffffff22; border-radius: 20px; padding: 24px 28px; width: min(440px, 100%); text-align: center; box-shadow: 0 20px 60px #000a; max-height: 100%; overflow: auto; }
+.card.wide { width: min(560px, 100%); }
+h1 { margin: 0; font-size: 54px; letter-spacing: 2px; line-height: 1; }
+h1 span { color: var(--accent); }
+h2 { margin: 0 0 8px; }
+.sub { opacity: 0.75; margin: 6px 0 14px; }
+input, select { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid #fff3; background: #fff1; color: #fff; font: inherit; font-size: 17px; margin-bottom: 10px; }
+select option { background: #111; }
+button.big { width: 100%; padding: 12px; border: 0; border-radius: 12px; background: linear-gradient(90deg, var(--accent), #8f7bff); color: #001; font: inherit; font-size: 22px; font-weight: 800; cursor: pointer; }
+button.big:hover { filter: brightness(1.1); }
+.rules { text-align: left; font-size: 14px; opacity: 0.85; padding-left: 18px; margin: 14px 0 8px; }
+.rules li { margin: 3px 0; }
+#records { font-size: 13px; opacity: 0.8; }
+#endTable { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 15px; }
+#endTable td { padding: 3px 6px; text-align: left; }
+#endTable td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#endTable tr.me { color: var(--accent); font-weight: 800; }
+#endPlace { font-size: 26px; font-weight: 800; color: var(--gold); }
+#endStats { font-size: 14px; opacity: 0.85; margin-bottom: 12px; }
