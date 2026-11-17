@@ -3,7 +3,9 @@ import { geoEquirectangular, geoPath } from 'd3-geo';
 import { feature } from 'topojson-client';
 import land50 from 'world-atlas/land-50m.json';
 
-export const R = 120; // radio del planeta (unidades de juego)
+export const R0 = 120; // radio base del planeta
+export let R = R0; // crece con la cantidad de jugadores
+export function setR(v) { R = v; }
 const D2R = Math.PI / 180;
 
 export function latLonToVec(lat, lon, out = new THREE.Vector3()) {

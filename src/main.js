@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import './style.css';
-import { R, CITIES, LANDMARKS, buildLand, surfDist, dirTo, moveOnSphere, tangentize, offsetPoint } from './geo.js';
+import { R, R0, setR, CITIES, LANDMARKS, buildLand, surfDist, dirTo, moveOnSphere, tangentize, offsetPoint } from './geo.js';
 import { createGlobe, MAX_HOLES } from './globe.js';
-import { World } from './objects.js';
-import { Hole, makeBots, safeSpawn, thinkBot, steer, START_A, GAIN, EAT_RATIO, HOLE_RATIO, MAX_BOMBS, titleOf, titleIndex, TITLES } from './holes.js';
+import { World, MOBILE } from './objects.js';
+import { Hole, makeBots, safeSpawn, thinkBot, steer, START_A, GAIN, EAT_RATIO, HOLE_RATIO, MAX_BOMBS, CAMO, titleOf, titleIndex, TITLES } from './holes.js';
 import { initAudio, sfx } from './audio.js';
 
 const ROUND = 300;
-const N_BOTS = 15;
+const BOT_POOL = 24; // bots que pueden "conectarse"
 const $ = (id) => document.getElementById(id);
 
 // ---------- Escena ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MOBILE ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 $('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
@@ -31,14 +31,79 @@ $('loading').classList.add('hidden');
 
 // ---------- Huecos ----------
 const player = new Hole({ name: 'Vos', color: 0x00e5ff, isPlayer: true });
-const bots = makeBots(N_BOTS);
-const holes = [player, ...bots];
-for (const b of bots) { b.spawnAt(safeSpawn(holes)); b.setArea(START_A * (1 + Math.random() * 6)); }
+const offline = makeBots(BOT_POOL);
+const holes = [player]; // conectados (el jugador siempre está, vivo o no)
 
 const game = {
   holes, world, now: 0, event: null, leader: null, state: 'menu', roundT: ROUND, nextEvent: 25, frenzy: false,
-  throwBomb,
+  throwBomb, startCamo, popTarget: 15, popT: 0, popChange: 0,
 };
+
+// ---------- Conexiones simuladas (los bots entran y salen como personas) ----------
+function connectBot(silent) {
+  if (!offline.length) return;
+  const b = offline.splice(Math.floor(Math.random() * offline.length), 1)[0];
+  b.score = 0; b.kills = 0; b.eaten = 0; b.splits = 0; b.landmarks = []; b.bestR = 0;
+  b.spawnAt(safeSpawn(holes)); b.setArea(START_A * (1 + Math.random() * 1.5));
+  b.camoCharge = Math.random() * 50;
+  holes.push(b);
+  if (!silent) feed(`🟢 <b style="color:${css(b)}">${b.name}</b> se conectó`);
+}
+function disconnectBot() {
+  const cands = holes.filter((h) => h !== player && h.camo === 'none');
+  if (!cands.length) return;
+  const b = cands[Math.floor(Math.random() * cands.length)];
+  holes.splice(holes.indexOf(b), 1);
+  b.alive = false;
+  offline.push(b);
+  const el = labelEls.get(b); if (el) { el.remove(); labelEls.delete(b); }
+  feed(`⚪ <b style="color:${css(b)}">${b.name}</b> se desconectó`);
+}
+function population(dt) {
+  game.popT -= dt;
+  if (game.popT > 0) return;
+  game.popT = 4 + Math.random() * 7;
+  if (game.now > game.popChange) { game.popTarget = 8 + Math.floor(Math.random() * 16); game.popChange = game.now + 40 + Math.random() * 50; }
+  const n = holes.length - 1;
+  if (n < game.popTarget) connectBot(); else if (n > game.popTarget) disconnectBot();
+}
+
+// ---------- El planeta crece con los jugadores ----------
+let builtR = R, topT = 0;
+function worldScale(dt) {
+  const target = R0 * Math.min(1.45, Math.max(0.75, Math.sqrt(holes.length / 16)));
+  setR(R + (target - R) * Math.min(1, dt * 0.15));
+  if (Math.abs(R - builtR) > 0.25) {
+    builtR = R;
+    globe.globe.scale.setScalar(R / R0); globe.atm.scale.setScalar(R / R0);
+    world.factor = (R / R0) ** 2;
+    world.rebuild();
+  }
+  topT -= dt;
+  if (topT <= 0) { topT = 1; world.topUp(holes); }
+}
+
+// ---------- Camuflaje ----------
+function startCamo(h) {
+  if (!h.alive || h.camo !== 'none' || h.camoCharge < CAMO.charge) return;
+  h.camo = 'fade'; h.camoT = 0; h.boost = false;
+  if (h === player) { banner('👻 Camuflándote… (todavía te pueden comer)'); sfx.camo(); }
+}
+function updateCamo(h, dt) {
+  if (h.camo === 'none') { h.camoCharge = Math.min(CAMO.charge, h.camoCharge + dt); return; }
+  h.camoT += dt;
+  if (h.camo === 'fade' && h.camoT >= CAMO.fade) { h.camo = 'hidden'; h.camoT = 0; if (h === player) banner('👻 ¡Invisible! Esperá a tus presas'); }
+  else if (h.camo === 'hidden' && h.camoT >= CAMO.hidden) {
+    h.camo = 'reveal'; h.camoT = 0;
+    if (h === player) { banner('⚠️ Reapareciendo… ¡todos te ven venir!'); sfx.warn(); }
+    else if (nearPlayer(h.pos, h.r + 25)) { feed(`⚠️ Algo grande está por aparecer cerca`); sfx.warn(); }
+  } else if (h.camo === 'reveal' && h.camoT >= CAMO.reveal) {
+    h.camo = 'none'; h.camoCharge = 0;
+    ring(h.pos, h.r * 2.5 + 3, 0xff3b2f, 0.6);
+    if (nearPlayer(h.pos, h.r + 30)) { sfx.hole(); shake = Math.max(shake, 0.4); }
+  }
+}
+
 
 // ---------- Guardado ----------
 const store = {
@@ -102,15 +167,30 @@ function explode(p, target) {
 }
 
 // ---------- Input ----------
-const input = { mx: innerWidth / 2, my: innerHeight / 2 - 80, keys: new Set(), boostBtn: false, rmb: false, touching: false };
+const input = { mx: innerWidth / 2, my: innerHeight / 2 - 80, keys: new Set(), boostBtn: false, rmb: false };
+const joy = { id: null, bx: 0, by: 0, x: 0, y: 0 };
+const JOY_R = 55;
+function joyShow() {
+  $('joy').style.display = joy.id === null ? 'none' : 'block';
+  $('joy').style.left = joy.bx + 'px'; $('joy').style.top = joy.by + 'px';
+  $('knob').style.transform = `translate(${joy.x}px, ${joy.y}px)`;
+}
+addEventListener('pointermove', (e) => {
+  if (e.pointerId !== joy.id) return;
+  let x = e.clientX - joy.bx, y = e.clientY - joy.by; const l = Math.hypot(x, y);
+  if (l > JOY_R) { x *= JOY_R / l; y *= JOY_R / l; }
+  joy.x = x; joy.y = y; joyShow();
+});
+const joyEnd = (e) => { if (e.pointerId === joy.id) { joy.id = null; joy.x = joy.y = 0; joyShow(); } };
+addEventListener('pointerup', joyEnd); addEventListener('pointercancel', joyEnd);
 addEventListener('pointermove', (e) => { input.mx = e.clientX; input.my = e.clientY; });
 renderer.domElement.addEventListener('pointerdown', (e) => {
   input.mx = e.clientX; input.my = e.clientY;
-  if (e.pointerType === 'touch') { input.touching = true; return; }
+  if (e.pointerType === 'touch') { if (joy.id === null) { joy.id = e.pointerId; joy.bx = e.clientX; joy.by = e.clientY; joy.x = joy.y = 0; joyShow(); } return; }
   if (e.button === 0 && game.state === 'play') throwBomb(player, playerAimDir());
   if (e.button === 2) input.rmb = true;
 });
-addEventListener('pointerup', (e) => { if (e.button === 2) input.rmb = false; if (e.pointerType === 'touch') input.touching = false; });
+addEventListener('pointerup', (e) => { if (e.button === 2) input.rmb = false; });
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('keydown', (e) => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
@@ -120,9 +200,11 @@ addEventListener('keydown', (e) => {
     if (game.state === 'play') throwBomb(player, playerAimDir());
     else if (game.state === 'dead') revive();
   }
+  if (e.code === 'KeyE' && game.state === 'play') startCamo(player);
 });
 addEventListener('keyup', (e) => input.keys.delete(e.code));
 $('btnBomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); if (game.state === 'play') throwBomb(player, playerAimDir()); });
+$('btnCamo').addEventListener('pointerdown', (e) => { e.stopPropagation(); if (game.state === 'play') startCamo(player); });
 $('btnBoost').addEventListener('pointerdown', (e) => { e.stopPropagation(); input.boostBtn = true; });
 $('btnBoost').addEventListener('pointerup', () => { input.boostBtn = false; });
 $('btnBoost').addEventListener('pointerleave', () => { input.boostBtn = false; });
@@ -158,11 +240,15 @@ function readPlayerInput() {
   if (k.has('KeyD') || k.has('ArrowRight')) { dx += 1; kb = true; }
   let throttle = 1;
   if (!kb) {
-    const s = toScreen(_v1.copy(player.pos).multiplyScalar(R));
-    dx = input.mx - s.x; dy = input.my - s.y;
-    const len = Math.hypot(dx, dy);
-    const touchIdle = matchMedia('(pointer: coarse)').matches && !input.touching;
-    throttle = touchIdle ? 0 : Math.min(1, Math.max(0, (len - 12) / (Math.min(innerWidth, innerHeight) * 0.16)));
+    if (MOBILE || joy.id !== null) {
+      dx = joy.x; dy = joy.y;
+      throttle = joy.id === null ? 0 : Math.min(1, Math.hypot(dx, dy) / (JOY_R * 0.8));
+    } else {
+      const s = toScreen(_v1.copy(player.pos).multiplyScalar(R));
+      dx = input.mx - s.x; dy = input.my - s.y;
+      const len = Math.hypot(dx, dy);
+      throttle = Math.min(1, Math.max(0, (len - 12) / (Math.min(innerWidth, innerHeight) * 0.16)));
+    }
   }
   if (dx === 0 && dy === 0) { player.throttle = 0; return; }
   screenToWorldDir(dx, dy, aim);
@@ -205,7 +291,7 @@ let pending = 0, pendingT = 0;
 
 function updateBoard() {
   const list = holes.filter((h) => h.alive || h === player).sort((a, b) => b.score - a.score);
-  const rows = list.slice(0, 8);
+  const rows = list.slice(0, MOBILE ? 4 : 8);
   if (!rows.includes(player)) rows.push(player);
   $('board').innerHTML = rows.map((h) => {
     const pos = list.indexOf(h) + 1;
@@ -224,7 +310,22 @@ function updateMeHud() {
   $('title').textContent = `${TITLES[ti][1]} · ${player.r.toFixed(1)} m`;
   const lo = TITLES[ti][0], hi = TITLES[ti + 1] ? TITLES[ti + 1][0] : lo * 1.5 + 5;
   $('barFill').style.width = Math.min(100, ((player.r - lo) / (hi - lo)) * 100) + '%';
-  $('bombs').textContent = '💣'.repeat(player.bombs) + '◦'.repeat(MAX_BOMBS - player.bombs);
+  const ready = player.camo === 'none' && player.camoCharge >= CAMO.charge;
+  const camoTxt = player.camo !== 'none' ? '👻 activo' : ready ? `👻 LISTO${MOBILE ? '' : ' (E)'}` : `👻 ${Math.ceil(CAMO.charge - player.camoCharge)} s`;
+  $('bombs').textContent = '💣'.repeat(player.bombs) + '◦'.repeat(MAX_BOMBS - player.bombs) + '   ' + camoTxt;
+  const bc = $('btnCamo');
+  bc.classList.toggle('ready', ready);
+  bc.style.setProperty('--p', player.camo !== 'none' ? 100 : (player.camoCharge / CAMO.charge) * 100);
+  $('btnBomb').dataset.n = player.bombs;
+  const cs = $('camoState');
+  if (player.camo === 'none' || !player.alive) cs.classList.add('hidden');
+  else {
+    cs.classList.remove('hidden');
+    cs.classList.toggle('warn', player.camo === 'reveal');
+    cs.textContent = player.camo === 'fade' ? `👻 Desapareciendo… ${Math.ceil(CAMO.fade - player.camoT)}`
+      : player.camo === 'hidden' ? `👻 Invisible · ${Math.ceil(CAMO.hidden - player.camoT)} s` : `⚠️ Reaparecés en ${Math.ceil(CAMO.reveal - player.camoT)}`;
+  }
+  $('pop').textContent = `🌍 ${holes.length} jugadores · ⌀ ${Math.round(12742 * R / R0).toLocaleString('es')} km`;
   const t = Math.max(0, game.roundT);
   $('timer').textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   $('timer').classList.toggle('low', t < 30);
@@ -299,7 +400,7 @@ function eatHole(big, small) {
 function startRound() {
   game.roundT = ROUND; game.nextEvent = ROUND - 25; game.event = null; game.frenzy = false;
   for (const h of holes) { h.score = 0; h.kills = 0; h.eaten = 0; h.splits = 0; h.deaths = 0; h.landmarks = []; h.bestR = 0; }
-  for (const b of bots) { b.spawnAt(safeSpawn(holes)); b.setArea(START_A * (1 + Math.random() * 1.5)); }
+  for (const b of holes) { if (b === player) continue; b.spawnAt(safeSpawn(holes)); b.setArea(START_A * (1 + Math.random() * 1.5)); }
   spawnPlayer();
   game.state = 'play';
   $('hud').classList.remove('hidden');
@@ -393,8 +494,11 @@ function tick() {
   // jugador
   if (playing && player.alive) readPlayerInput();
 
+  population(dt);
+  worldScale(dt);
   // bots
-  for (const h of bots) {
+  for (const h of holes) {
+    if (h === player) continue;
     if (!h.alive) {
       if (game.now > h.respawnAt) { h.spawnAt(safeSpawn(holes)); h.setArea(START_A * (1 + Math.random() * 2.5)); }
       continue;
@@ -409,12 +513,14 @@ function tick() {
   let leader = null;
   for (const h of holes) {
     if (!h.alive) continue;
+    updateCamo(h, dt);
+    if (!h.solid()) h.boost = false;
     if (h.boost && h.A > 1) h.setArea(h.A - h.A * 0.03 * dt); else h.boost = false;
     if (h.r > 8) h.setArea(h.A - dt * h.A * 0.02 * (h.r - 8) / 8); // evaporación de gigantes
     h.stun = Math.max(0, h.stun - dt); h.shield = Math.max(0, (h.shield || 0) - dt); h.rush = Math.max(0, h.rush - dt);
     h.comboT -= dt; if (h.comboT <= 0) h.combo = 0;
     moveOnSphere(h.pos, h.dir, h.speed() * h.throttle * dt);
-    eatObjects(h);
+    if (h.solid()) eatObjects(h);
     h.bestR = Math.max(h.bestR, h.r);
     if (!leader || h.r > leader.r) leader = h;
   }
@@ -424,7 +530,7 @@ function tick() {
     for (let j = i + 1; j < holes.length; j++) {
       const b = holes[j]; if (!b.alive || !a.alive) continue;
       const big = a.r >= b.r ? a : b, small = big === a ? b : a;
-      if (!(small.shield > 0) && big.r > small.r * HOLE_RATIO && surfDist(big.pos, small.pos) < big.r - small.r * 0.4) eatHole(big, small);
+      if (a.solid() && b.solid() && !(small.shield > 0) && big.r > small.r * HOLE_RATIO && surfDist(big.pos, small.pos) < big.r - small.r * 0.4) eatHole(big, small);
     }
   }
 
@@ -436,7 +542,7 @@ function tick() {
     const hop = 0.6 + Math.abs(Math.sin(p.travelled * 0.5)) * 2.2;
     p.mesh.position.copy(p.pos).multiplyScalar(R + hop);
     let hit = null;
-    for (const h of holes) if (h !== p.owner && h.alive && surfDist(p.pos, h.pos) < h.r + 0.4) { hit = h; break; }
+    for (const h of holes) if (h !== p.owner && h.alive && h.solid() && surfDist(p.pos, h.pos) < h.r + 0.4) { hit = h; break; }
     if (hit || p.travelled > p.max) { explode(p, hit); scene.remove(p.mesh); projectiles.splice(i, 1); }
   }
   for (let i = rings.length - 1; i >= 0; i--) {
@@ -449,7 +555,8 @@ function tick() {
   world.update(dt, game.now, holes);
 
   // shader de huecos
-  const vis = holes.filter((h) => h.alive).sort((a, b) => b.r - a.r).slice(0, MAX_HOLES);
+  const vis = holes.filter((h) => h.alive && (h.camo !== 'hidden' || h === player)).sort((a, b) => b.r - a.r).slice(0, MAX_HOLES);
+  for (const h of vis) { h.fxAlpha = h === player ? Math.max(0.22, h.alpha()) : h.alpha(); h.fxWarn = h.camo === 'reveal' ? 1 : 0; }
   globe.setHoles(vis);
   globe.uniforms.time.value = game.now;
 
@@ -499,7 +606,7 @@ function updateLabels() {
   for (const h of holes) {
     const el = labelFor(h);
     const w = _v1.copy(h.pos).multiplyScalar(R);
-    const visible = h.alive && h.pos.dot(camera.position) > R * 1.0 && game.state !== 'menu';
+    const visible = h.alive && (h.camo !== 'hidden' || h === player) && h.pos.dot(camera.position) > R * 1.0 && game.state !== 'menu';
     if (!visible) { el.style.display = 'none'; continue; }
     toScreen(w, _s);
     if (!_s.ok || _s.x < -50 || _s.y < -50 || _s.x > innerWidth + 50 || _s.y > innerHeight + 50) { el.style.display = 'none'; continue; }
@@ -509,8 +616,10 @@ function updateLabels() {
     el.style.display = 'block';
     el.style.left = _s.x + 'px'; el.style.top = _s.y + 'px';
     el.style.fontSize = Math.max(10, Math.min(30, pxR * 0.42)) + 'px';
-    el.style.color = h === player ? '#fff' : css(h);
-    el.innerHTML = (h === game.leader ? '<span class="crown">👑</span>' : '') + (h.shield > 0 ? '🛡️ ' : '') + h.name;
+    el.style.color = h.camo === 'reveal' ? '#ff4d4d' : h === player ? '#fff' : css(h);
+    el.style.opacity = h === player || h.camo === 'reveal' ? 1 : Math.max(0.15, h.alpha());
+    const extra = h.camo === 'reveal' ? `<span class="crown">⚠️ ${Math.ceil(CAMO.reveal - h.camoT)}</span>` : h === game.leader ? '<span class="crown">👑</span>' : '';
+    el.innerHTML = extra + (h.shield > 0 ? '🛡️ ' : '') + (h === player && !h.solid() ? '👻 ' : '') + h.name;
   }
   // flechas al borde
   let ai = 0;
@@ -532,14 +641,14 @@ function updateLabels() {
       a.firstChild.style.transform = `translateX(-50%) rotate(${-(Math.atan2(dy, dx) + Math.PI / 2)}rad)`;
     };
     for (const h of holes) {
-      if (h === player || !h.alive) continue;
+      if (h === player || !h.alive || h.camo === 'hidden' || (h.camo === 'fade' && h.alpha() < 0.3)) continue;
       const d = surfDist(player.pos, h.pos);
       if (d > 45 + player.r * 2) continue;
       toScreen(_v1.copy(h.pos).multiplyScalar(R), _s);
       const onScreen = h.pos.dot(camera.position) > R && _s.ok && _s.x > 0 && _s.y > 0 && _s.x < innerWidth && _s.y < innerHeight;
       if (onScreen) continue;
       const color = h.r > player.r * HOLE_RATIO ? '#ff4d4d' : player.r > h.r * HOLE_RATIO ? '#5dff8f' : '#ffffff';
-      addArrow(h.pos, color, `${Math.round(d)} m`);
+      addArrow(h.pos, h.camo === 'reveal' ? '#ff4d4d' : color, `${h.camo === 'reveal' ? '⚠️ ' : ''}${Math.round(d)} m`);
     }
     if (game.event) {
       const d = surfDist(player.pos, game.event.city.pos);
@@ -550,4 +659,5 @@ function updateLabels() {
 }
 
 requestAnimationFrame(tick);
+for (let i = 0; i < 15; i++) connectBot(true);
 window.__tm = { game, player, holes, world };

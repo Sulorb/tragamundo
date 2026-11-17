@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { R, CITIES, LANDMARKS, latLonToVec, vecToLatLon, isLand, randomLand, randomCoastalOcean, offsetPoint, surfDist } from './geo.js';
+import { R, R0, CITIES, LANDMARKS, latLonToVec, vecToLatLon, isLand, randomLand, randomCoastalOcean, offsetPoint, surfDist } from './geo.js';
 
 // ---------- Geometrías (huella radio ~1, base en y=0) ----------
 function colored(geo, hex) {
@@ -129,20 +129,24 @@ function geoLandmark(shape, hex) {
   return mergeGeometries(parts);
 }
 
+export const MOBILE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+const CAPK = MOBILE ? 0.6 : 1;
+
 // ---------- Tipos ----------
 // s = radio de huella, cap = capacidad máxima, colors = paleta de tinte
 export const KINDS = {
-  tree: { s: 0.38, geo: geoTree, cap: 9000, colors: [0xffffff, 0xd8ffd8, 0xe8f5c8] },
-  palm: { s: 0.4, geo: geoPalm, cap: 900, colors: [0xffffff] },
-  car: { s: 0.27, geo: geoCar, cap: 2600, colors: [0xe53935, 0x1e88e5, 0xfdd835, 0xffffff, 0x43a047, 0x212121, 0xfb8c00] },
-  house: { s: 0.62, geo: geoHouse, cap: 4200, colors: [0xfff3e0, 0xffe0b2, 0xe1f5fe, 0xf8bbd0, 0xdcedc8, 0xfff9c4] },
-  building: { s: 1.15, geo: geoBuilding, cap: 1900, colors: [0x90a4ae, 0xb0bec5, 0xcfd8dc, 0xa1887f, 0x9fa8da, 0xffcc80] },
-  tower: { s: 2.0, geo: geoTower, cap: 520, colors: [0x6fa8dc, 0x9fc5e8, 0x7f8c9a, 0xb4c7d6, 0x5d7b96] },
-  boat: { s: 0.55, geo: geoBoat, cap: 450, colors: [0xffffff, 0xff7043, 0x4fc3f7] },
-  gold: { s: 0.5, geo: geoGold, cap: 220, colors: [0xffffff], emissive: 0x7a5a00 },
-  bomb: { s: 0.45, geo: geoBomb, cap: 160, colors: [0xffffff], emissive: 0x3a0000 },
+  tree: { s: 0.38, geo: geoTree, cap: 13000, colors: [0xffffff, 0xd8ffd8, 0xe8f5c8] },
+  palm: { s: 0.4, geo: geoPalm, cap: 1300, colors: [0xffffff] },
+  car: { s: 0.27, geo: geoCar, cap: 3800, colors: [0xe53935, 0x1e88e5, 0xfdd835, 0xffffff, 0x43a047, 0x212121, 0xfb8c00] },
+  house: { s: 0.62, geo: geoHouse, cap: 6000, colors: [0xfff3e0, 0xffe0b2, 0xe1f5fe, 0xf8bbd0, 0xdcedc8, 0xfff9c4] },
+  building: { s: 1.15, geo: geoBuilding, cap: 2800, colors: [0x90a4ae, 0xb0bec5, 0xcfd8dc, 0xa1887f, 0x9fa8da, 0xffcc80] },
+  tower: { s: 2.0, geo: geoTower, cap: 760, colors: [0x6fa8dc, 0x9fc5e8, 0x7f8c9a, 0xb4c7d6, 0x5d7b96] },
+  boat: { s: 0.55, geo: geoBoat, cap: 650, colors: [0xffffff, 0xff7043, 0x4fc3f7] },
+  gold: { s: 0.5, geo: geoGold, cap: 300, colors: [0xffffff], emissive: 0x7a5a00 },
+  bomb: { s: 0.45, geo: geoBomb, cap: 240, colors: [0xffffff], emissive: 0x3a0000 },
   debris: { s: 0.4, geo: geoDebris, cap: 900, colors: [0xffd23a, 0xff8a65, 0x80deea, 0xce93d8], emissive: 0x332200 },
 };
+for (const k in KINDS) KINDS[k].cap = Math.round(KINDS[k].cap * CAPK);
 
 const CELL = 3; // grados
 const ROWS = 180 / CELL, COLS = 360 / CELL;
@@ -160,6 +164,7 @@ export class World {
     this.landmarkObjs = [];
     this.respawnQueue = [];
     this.dirty = new Set();
+    this.count = {}; this.base = {}; this.hi = {}; this.factor = 1;
 
     for (const [k, def] of Object.entries(KINDS)) {
       const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: def.emissive || 0x000000 });
@@ -172,10 +177,9 @@ export class World {
         mesh.setMatrixAt(i, _m);
         mesh.setColorAt(i, col.setHex(def.colors[i % def.colors.length]));
       }
-      mesh.count = def.cap;
       scene.add(mesh);
       this.meshes[k] = mesh;
-      this.free[k] = [];
+      this.free[k] = []; this.count[k] = 0; this.hi[k] = 0; mesh.count = 0;
       for (let i = def.cap - 1; i >= 0; i--) this.free[k].push(i);
     }
   }
@@ -239,6 +243,8 @@ export class World {
     const s = def.s * (opts.scale ?? (0.85 + Math.random() * 0.35));
     const o = { kind, s, pos: pos.clone().normalize(), yaw: Math.random() * Math.PI * 2, alive: true, inst, cell: -1, home: opts.home || null, pts: opts.pts ?? Math.ceil(s * s * 10), area: opts.area ?? null, respawn: opts.respawn ?? true };
     this.objs.push(o);
+    this.count[kind]++;
+    if (inst + 1 > this.hi[kind]) { this.hi[kind] = inst + 1; this.meshes[kind].count = this.hi[kind]; }
     this.addToGrid(o);
     this.writeMatrix(o);
     return o;
@@ -259,28 +265,29 @@ export class World {
     // campo: bosques y pueblos
     const p = new THREE.Vector3();
     let guard = 0;
-    while (this.free.tree.length > 900 && guard++ < 5000) {
+    while (this.count.tree < KINDS.tree.cap * 0.62 && guard++ < 5000) {
       randomLand(p);
       const n = 8 + Math.floor(Math.random() * 25), rad = 1 + Math.random() * 3;
       for (let i = 0; i < n; i++) { const q = offsetPoint(p, Math.sqrt(Math.random()) * rad, Math.random() * 7); if (isLand(q)) this.spawn('tree', q, { home: 'land' }); }
     }
     guard = 0;
-    while (this.free.house.length > 900 && guard++ < 3000) {
+    while (this.count.house < KINDS.house.cap * 0.62 && guard++ < 3000) {
       randomLand(p);
       const n = 3 + Math.floor(Math.random() * 8);
       for (let i = 0; i < n; i++) { const q = offsetPoint(p, Math.random() * 1.8, Math.random() * 7); if (isLand(q)) this.spawn('house', q, { home: 'land' }); }
       if (Math.random() < 0.6) this.spawn('car', offsetPoint(p, Math.random() * 2, Math.random() * 7), { home: 'land' });
     }
     guard = 0;
-    while (this.free.palm.length > 100 && guard++ < 3000) {
+    while (this.count.palm < KINDS.palm.cap * 0.62 && guard++ < 3000) {
       randomLand(p, 30);
       if (Math.abs(p.y) > 0.45) continue;
       for (let i = 0; i < 5; i++) { const q = offsetPoint(p, Math.random() * 1.5, Math.random() * 7); if (isLand(q)) this.spawn('palm', q, { home: 'tropic' }); }
     }
-    for (let i = 0; i < 380; i++) this.spawn('boat', randomCoastalOcean(p), { home: 'sea' });
-    for (let i = 0; i < 110; i++) this.spawn('bomb', randomLand(p), { home: 'land', scale: 1, pts: 0 });
+    for (let i = 0; i < Math.round(380 * CAPK); i++) this.spawn('boat', randomCoastalOcean(p), { home: 'sea' });
+    for (let i = 0; i < Math.round(130 * CAPK); i++) this.spawn('bomb', randomLand(p), { home: 'land', scale: 1, pts: 0 });
     for (let i = 0; i < 40; i++) this.spawn('gold', randomLand(p), { home: 'land', scale: 1, pts: 60 });
     for (const L of LANDMARKS) this.spawnLandmark(L);
+    for (const k in KINDS) this.base[k] = this.count[k];
   }
 
   populateCity(c, mult) {
@@ -361,6 +368,7 @@ export class World {
       const r = this.respawnQueue[i];
       if (now < r.at) continue;
       budget--;
+      if (!r.o.landmark && this.base[r.o.kind] && this.count[r.o.kind] > Math.round(this.base[r.o.kind] * this.factor)) { this.respawnQueue.splice(i, 1); this.release(r.o); continue; }
       const p = this.findSpawn(r.o, holes);
       if (!p) { r.at = now + 3; continue; }
       this.respawnQueue.splice(i, 1);
@@ -381,9 +389,29 @@ export class World {
   }
 
   release(o) {
+    this.count[o.kind]--;
     this.free[o.kind].push(o.inst);
     const i = this.objs.indexOf(o);
     if (i >= 0) { this.objs[i] = this.objs[this.objs.length - 1]; this.objs.pop(); }
+  }
+
+  /** Reescribe todas las matrices (cuando cambia el radio del planeta) */
+  rebuild() {
+    for (const o of this.objs) if (o.alive) this.writeMatrix(o);
+  }
+
+  /** Agrega objetos hasta la densidad que pide el tamaño actual del planeta */
+  topUp(holes) {
+    let budget = 120;
+    for (const k of ['tree', 'palm', 'car', 'house', 'building', 'tower', 'boat', 'bomb', 'gold']) {
+      const want = Math.min(KINDS[k].cap, Math.round(this.base[k] * this.factor));
+      while (this.count[k] < want && budget-- > 0) {
+        const home = k === 'boat' ? 'sea' : k === 'palm' ? 'tropic' : ['car', 'building', 'tower'].includes(k) ? CITIES[Math.floor(Math.random() * CITIES.length)] : 'land';
+        const p = this.findSpawn({ kind: k, s: KINDS[k].s, home }, holes);
+        if (!p) break;
+        this.spawn(k, p, { home, ...(k === 'bomb' ? { scale: 1, pts: 0 } : k === 'gold' ? { scale: 1, pts: 60 } : {}) });
+      }
+    }
   }
 
   /** Escombros que suelta un hueco partido por una bomba */

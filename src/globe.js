@@ -12,12 +12,14 @@ export function createGlobe(scene) {
 
   const holes = [];
   const holeCol = [];
-  for (let i = 0; i < MAX_HOLES; i++) { holes.push(new THREE.Vector4(0, 1, 0, 0)); holeCol.push(new THREE.Vector3(1, 1, 1)); }
+  const holeFx = [];
+  for (let i = 0; i < MAX_HOLES; i++) { holes.push(new THREE.Vector4(0, 1, 0, 0)); holeCol.push(new THREE.Vector3(1, 1, 1)); holeFx.push(new THREE.Vector2(1, 0)); }
 
   const uniforms = {
     map: { value: tex },
     holes: { value: holes },
     holeCol: { value: holeCol },
+    holeFx: { value: holeFx },
     holeCount: { value: 0 },
     sunDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
     time: { value: 0 },
@@ -37,6 +39,7 @@ export function createGlobe(scene) {
       uniform sampler2D map;
       uniform vec4 holes[MAXH];
       uniform vec3 holeCol[MAXH];
+      uniform vec2 holeFx[MAXH];
       uniform int holeCount;
       uniform vec3 sunDir;
       uniform float time;
@@ -81,13 +84,18 @@ export function createGlobe(scene) {
           vec4 h = holes[i];
           float ang = acos(clamp(dot(p, h.xyz), -1.0, 1.0));
           float t = ang / h.w;
+          float al = holeFx[i].x;
+          float warn = holeFx[i].y;
+          float pulse = warn * (0.5 + 0.5*sin(time*12.0));
+          vec3 rimC = mix(holeCol[i]*1.15, vec3(1.0,0.15,0.1), pulse);
           if (t < 1.0) {
             vec3 inner = vec3(0.01,0.01,0.025) + holeCol[i]*0.10*pow(t,5.0);
             inner += vec3(0.25)*pow(t,14.0);
-            col = inner;
+            col = mix(col, inner, al);
+            if (warn > 0.0 && t > 0.93) col = mix(col, vec3(1.0,0.15,0.1), pulse*0.8);
           } else if (t < 1.10) {
             float k = 1.0 - (t-1.0)/0.10;
-            col = mix(col, holeCol[i]*1.15, k*k*0.95);
+            col = mix(col, rimC, k*k*0.95*max(al, pulse));
           }
         }
         gl_FragColor = vec4(col,1.0);
@@ -122,13 +130,14 @@ export function createGlobe(scene) {
   scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false })));
 
   return {
-    globe, uniforms,
+    globe, atm, uniforms,
     setHoles(list) {
       const n = Math.min(list.length, MAX_HOLES);
       for (let i = 0; i < n; i++) {
         const h = list[i];
         holes[i].set(h.pos.x, h.pos.y, h.pos.z, Math.max(0.0005, h.r / R));
         holeCol[i].set(h.color.r, h.color.g, h.color.b);
+        holeFx[i].set(h.fxAlpha ?? 1, h.fxWarn ?? 0);
       }
       uniforms.holeCount.value = n;
     },

@@ -18,7 +18,9 @@
     <div id="board"></div>
     <div id="top">
       <div id="timer">5:00</div>
+      <div id="pop"></div>
       <div id="frenzy" class="hidden">🔥 FRENESÍ ×2</div>
+      <div id="camoState" class="hidden"></div>
     </div>
     <div id="me">
       <div id="score">0</div>
@@ -30,13 +32,15 @@
       <div id="title">Bache</div>
       <div id="bar"><div id="barFill"></div></div>
       <div id="bombs"></div>
-      <div id="hint">Mouse: moverse · Clic / Espacio: bomba 💣 · Shift / clic derecho: turbo</div>
+      <div id="hint">Mouse: moverse · Clic / Espacio: bomba 💣 · Shift / clic derecho: turbo · E: camuflaje 👻</div>
     </div>
     <div id="mobileBtns">
+      <button id="btnCamo">👻</button>
       <button id="btnBoost">⚡</button>
       <button id="btnBomb">💣</button>
     </div>
   </div>
+  <div id="joy"><div id="knob"></div></div>
   <div id="banner"></div>
 
   <div id="start" class="overlay">
@@ -51,6 +55,8 @@
         <li>Comé huecos más chicos. Cuidado con los grandes.</li>
         <li>Más grande = más lento. Los gigantes se evaporan de a poco.</li>
         <li>💣 Recogé bombas y tirálas a un hueco gigante para partirlo: suelta su comida.</li>
+        <li>👻 Camuflaje (se carga en 1 min): te volvés invisible y los demás te pasan por encima. Al reaparecer hay 8 s de aviso: el que no salga, adentro.</li>
+        <li>🌍 El planeta crece cuando entran más jugadores.</li>
         <li>💛 Lluvias de oro en ciudades al azar. Últimos 30 s: puntos ×2.</li>
       </ul>
       <div id="records"></div>

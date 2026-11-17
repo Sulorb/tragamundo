@@ -6,6 +6,7 @@ export const GAIN = 0.05; // área ganada = s² * GAIN
 export const EAT_RATIO = 0.82; // un objeto entra si s < r * EAT_RATIO
 export const HOLE_RATIO = 1.12; // un hueco come a otro si r > r2 * HOLE_RATIO
 export const MAX_BOMBS = 3;
+export const CAMO = { charge: 60, fade: 8, hidden: 30, reveal: 8 };
 
 export const TITLES = [
   [0, 'Bache'], [1, 'Alcantarilla'], [2, 'Socavón'], [3.6, 'Cráter'], [6, 'Sumidero'], [9.5, 'Abismo'], [14, 'Agujero Negro'], [21, 'Devoramundos'],
@@ -14,8 +15,9 @@ export function titleOf(r) { let t = TITLES[0][1]; for (const [min, name] of TIT
 export function titleIndex(r) { let k = 0; TITLES.forEach(([min], i) => { if (r >= min) k = i; }); return k; }
 
 const BOT_NAMES = ['Tragón', 'La Sinkhole', 'Don Bache', 'Pozo Loco', 'Mr. Hoyo', 'Abismito', 'El Socavón', 'Cráter Kid', 'Doña Grieta',
-  'Agujerín', 'Bachemán', 'Glotón 3000', 'Topo Gigio', 'Zanja', 'Hoyuelo', 'Remolino', 'Vórtice', 'Sumidero Sam'];
-const BOT_COLORS = [0xff5252, 0xffab40, 0xffee58, 0x69f0ae, 0x40c4ff, 0xb388ff, 0xff80ab, 0x64ffda, 0xeeff41, 0xff6e40, 0x8c9eff, 0xea80fc, 0x18ffff, 0xccff90, 0xffd180, 0xf48fb1];
+  'Agujerín', 'Bachemán', 'Glotón 3000', 'Topo Gigio', 'Zanja', 'Hoyuelo', 'Remolino', 'Vórtice', 'Sumidero Sam',
+  'Comelón', 'La Fosa', 'Barranco', 'Tripa Negra', 'Don Pozo', 'Hoyito Feliz'];
+const BOT_COLORS = [0xff5252, 0xffab40, 0xffee58, 0x69f0ae, 0x40c4ff, 0xb388ff, 0xff80ab, 0x64ffda, 0xeeff41, 0xff6e40, 0x8c9eff, 0xea80fc, 0x18ffff, 0xccff90, 0xffd180, 0xf48fb1, 0x80cbc4, 0xffcc80, 0xb39ddb, 0xa5d6a7, 0xef9a9a, 0x90caf9, 0xfff59d, 0xbcaaa4];
 
 let nextId = 1;
 export class Hole {
@@ -35,6 +37,7 @@ export class Hole {
     this.stun = 0; this.rush = 0; this.boost = false; this.throttle = 1; this.bombCd = 0;
     this.combo = 0; this.comboT = 0;
     this.bestR = this.r;
+    this.camo = 'none'; this.camoT = 0; this.camoCharge = isPlayer ? 0 : Math.random() * 50;
     this.respawnAt = 0;
     this.killer = null;
     this.ai = isPlayer ? null : {
@@ -43,6 +46,14 @@ export class Hole {
       turn: 3 + Math.random() * 3, fleeing: false, pace: 0.72 + Math.random() * 0.22,
     };
   }
+  /** Puede comer y ser comido (fuera del camuflaje o mientras se desvanece) */
+  solid() { return this.camo === 'none' || this.camo === 'fade'; }
+  alpha() {
+    if (this.camo === 'fade') return 1 - this.camoT / CAMO.fade;
+    if (this.camo === 'hidden') return 0;
+    if (this.camo === 'reveal') return this.camoT / CAMO.reveal;
+    return 1;
+  }
   setArea(A) { this.A = Math.max(START_A * 0.8, A); this.r = Math.sqrt(this.A); }
   speed() {
     let v = 9.5 / (1 + 0.075 * this.r);
@@ -50,12 +61,14 @@ export class Hole {
     if (this.stun > 0) v *= 0.3;
     if (this.rush > 0) v *= 1.35;
     if (this.ai) v *= this.ai.pace;
+    if (this.camo === 'hidden') v *= 0.5;
+    if (this.camo === 'reveal') v *= 0.3;
     return v;
   }
   spawnAt(p) {
     this.pos.copy(p).normalize();
     this.dir.set(0, 1, 0); tangentize(this.dir, this.pos);
-    this.setArea(START_A); this.alive = true; this.bombs = 0; this.combo = 0; this.stun = 0; this.shield = 3;
+    this.setArea(START_A); this.alive = true; this.bombs = 0; this.combo = 0; this.stun = 0; this.shield = 3; this.camo = 'none'; this.camoT = 0;
   }
 }
 
@@ -102,8 +115,13 @@ export function thinkBot(h, game) {
   let bestScore = 0, bestPos = null, bestHole = null;
 
   for (const o of holes) {
-    if (o === h || !o.alive) continue;
+    if (o === h || !o.alive || o.camo === 'hidden') continue;
     const d = surfDist(h.pos, o.pos);
+    if (o.camo === 'reveal') {
+      // aviso de reaparición: huir si cabe adentro
+      if (o.r > h.r * HOLE_RATIO && d < o.r + 2) { threat = 1; flee.addScaledVector(dirTo(h.pos, o.pos, _a), -3); }
+      continue;
+    }
     if (o.r > h.r * HOLE_RATIO) {
       const danger = o.r + 5 + o.r * 1.2 * ai.caution;
       if (d < danger) {
@@ -152,5 +170,7 @@ export function thinkBot(h, game) {
   ai.fleeing = threat > 0.15;
   if (ai.fleeing) des.multiplyScalar(0.4).add(flee);
   tangentize(des, h.pos);
-  h.boost = (threat > 0.45 && h.A > 1.2) || (bestHole && surfDist(h.pos, bestHole.pos) < 7 + h.r && h.A > 2 && ai.aggr > 0.6);
+  // camuflaje: para escapar o para emboscar
+  if (h.camo === 'none' && h.camoCharge >= CAMO.charge && h.r > 1.5 && (threat > 0.6 || Math.random() < 0.012 * ai.aggr)) game.startCamo(h);
+  h.boost = h.solid() && (threat > 0.45 && h.A > 1.2) || (bestHole && surfDist(h.pos, bestHole.pos) < 7 + h.r && h.A > 2 && ai.aggr > 0.6);
 }

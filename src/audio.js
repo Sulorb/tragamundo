@@ -36,5 +36,7 @@ export const sfx = {
   landmark() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.22), i * 90)); },
   level() { [392, 523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'square', 0.1), i * 70)); },
   death() { tone(300, 1.0, 'sawtooth', 0.25, 0.15); },
+  camo() { tone(520, 1.2, 'sine', 0.2, 0.25); },
+  warn() { [880, 660, 880].forEach((f, i) => setTimeout(() => tone(f, 0.12, 'square', 0.12), i * 140)); },
   event() { [659, 784, 659, 988].forEach((f, i) => setTimeout(() => tone(f, 0.15, 'triangle', 0.18), i * 110)); },
 };
