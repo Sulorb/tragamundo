@@ -82,8 +82,7 @@ export function createGlobe(scene) {
         for (int i = 0; i < MAXH; i++) {
           if (i >= holeCount) break;
           vec4 h = holes[i];
-          float ang = acos(clamp(dot(p, h.xyz), -1.0, 1.0));
-          float t = ang / h.w;
+          float t = length(p - h.xyz) / (2.0 * sin(h.w * 0.5));
           float al = holeFx[i].x;
           float warn = holeFx[i].y;
           float pulse = warn * (0.5 + 0.5*sin(time*12.0));

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { R, R0, CITIES, LANDMARKS, latLonToVec, vecToLatLon, isLand, randomLand, randomCoastalOcean, offsetPoint, surfDist } from './geo.js';
+import { R, R0, CITIES, LANDMARKS, latLonToVec, vecToLatLon, isLand, randomLand, randomCoastalOcean, offsetPoint, surfDist, tangentize } from './geo.js';
 
 // ---------- Geometrías (huella radio ~1, base en y=0) ----------
 function colored(geo, hex) {
@@ -73,6 +73,27 @@ function geoDebris() {
   return colored(at(new THREE.IcosahedronGeometry(0.7, 0), 0, 0.6, 0), 0xffffff);
 }
 
+// ---- cositas chiquitas (adentro de la casa y en la calle) ----
+const legs = (w, d, h, c) => [[-w, -d], [w, -d], [-w, d], [w, d]].map(([x, z]) => colored(at(new THREE.BoxGeometry(0.12, h, 0.12), x, h / 2, z), c));
+function geoCup() { return mergeGeometries([colored(at(new THREE.CylinderGeometry(0.8, 0.65, 1.4, 10), 0, 0.7, 0), 0xffffff), colored(at(new THREE.TorusGeometry(0.35, 0.1, 5, 10), 0.85, 0.75, 0), 0xffffff)]); }
+function geoBook() { return mergeGeometries([colored(at(new THREE.BoxGeometry(1.3, 0.45, 1.8), 0, 0.22, 0), 0xffffff), colored(at(new THREE.BoxGeometry(1.2, 0.36, 1.82), 0.06, 0.22, 0), 0xf5f0e0)]); }
+function geoChair() { return mergeGeometries([colored(at(new THREE.BoxGeometry(1.2, 0.18, 1.2), 0, 0.75, 0), 0xffffff), colored(at(new THREE.BoxGeometry(1.2, 1.1, 0.16), 0, 1.35, -0.52), 0xffffff), ...legs(0.5, 0.5, 0.7, 0x5d4037)]); }
+function geoLamp() { return mergeGeometries([colored(at(new THREE.CylinderGeometry(0.5, 0.6, 0.15, 10), 0, 0.07, 0), 0x444444), colored(at(new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6), 0, 1.0, 0), 0x888888), colored(at(new THREE.CylinderGeometry(0.4, 0.8, 0.7, 10, 1, true), 0, 1.9, 0), 0xfff1b8)]); }
+function geoTable() { return mergeGeometries([colored(at(new THREE.BoxGeometry(1.9, 0.14, 1.3), 0, 0.85, 0), 0xffffff), ...legs(0.8, 0.5, 0.8, 0x6d4c41)]); }
+function geoSofa() { return mergeGeometries([colored(at(new THREE.BoxGeometry(1.9, 0.55, 1.0), 0, 0.35, 0), 0xffffff), colored(at(new THREE.BoxGeometry(1.9, 0.7, 0.3), 0, 0.85, -0.35), 0xffffff), colored(at(new THREE.BoxGeometry(0.25, 0.4, 1.0), -0.85, 0.8, 0), 0xffffff), colored(at(new THREE.BoxGeometry(0.25, 0.4, 1.0), 0.85, 0.8, 0), 0xffffff)]); }
+function geoBed() { return mergeGeometries([colored(at(new THREE.BoxGeometry(1.3, 0.5, 1.9), 0, 0.3, 0), 0xffffff), colored(at(new THREE.BoxGeometry(1.0, 0.18, 0.4), 0, 0.62, -0.65), 0xfafafa), colored(at(new THREE.BoxGeometry(1.3, 0.8, 0.12), 0, 0.5, -0.95), 0x6d4c41)]); }
+function geoWall() { return mergeGeometries([colored(at(new THREE.BoxGeometry(2.05, 1.7, 0.3), 0, 0.85, 0), 0xf3e5d0), colored(at(new THREE.BoxGeometry(2.1, 0.12, 0.38), 0, 1.72, 0), 0xb08968)]); }
+function geoPerson() { return mergeGeometries([colored(at(new THREE.CylinderGeometry(0.45, 0.5, 1.4, 8), 0, 0.7, 0), 0xffffff), colored(at(new THREE.SphereGeometry(0.42, 8, 6), 0, 1.75, 0), 0xf1c27d)]); }
+function geoCone() { return mergeGeometries([colored(at(new THREE.ConeGeometry(0.75, 1.9, 8), 0, 0.95, 0), 0xff7a1a), colored(at(new THREE.CylinderGeometry(0.47, 0.55, 0.3, 8), 0, 0.85, 0), 0xffffff), colored(at(new THREE.BoxGeometry(1.5, 0.12, 1.5), 0, 0.06, 0), 0xff7a1a)]); }
+function geoBin() { return mergeGeometries([colored(at(new THREE.CylinderGeometry(0.75, 0.62, 1.6, 10), 0, 0.8, 0), 0xffffff), colored(at(new THREE.CylinderGeometry(0.82, 0.82, 0.15, 10), 0, 1.65, 0), 0x333333)]); }
+function geoHydrant() { return mergeGeometries([colored(at(new THREE.CylinderGeometry(0.45, 0.55, 1.4, 8), 0, 0.7, 0), 0xe53935), colored(at(new THREE.SphereGeometry(0.45, 8, 6), 0, 1.45, 0), 0xe53935), colored(at(new THREE.CylinderGeometry(0.18, 0.18, 1.3, 6).rotateZ(Math.PI / 2), 0, 0.95, 0), 0xb71c1c)]); }
+function geoBike() {
+  const w1 = new THREE.TorusGeometry(0.5, 0.08, 5, 12); const w2 = w1.clone();
+  return mergeGeometries([colored(at(w1, 0, 0.55, -0.75).rotateY(Math.PI / 2), 0x222222), colored(at(w2, 0, 0.55, 0.75).rotateY(Math.PI / 2), 0x222222), colored(at(new THREE.BoxGeometry(0.1, 0.1, 1.5), 0, 0.95, 0), 0xffffff), colored(at(new THREE.BoxGeometry(0.1, 0.6, 0.1), 0, 1.2, 0.6), 0xffffff)]);
+}
+function geoBench() { return mergeGeometries([colored(at(new THREE.BoxGeometry(2.0, 0.12, 0.6), 0, 0.55, 0), 0xa1887f), colored(at(new THREE.BoxGeometry(2.0, 0.5, 0.1), 0, 0.95, -0.28), 0xa1887f), ...legs(0.85, 0.22, 0.5, 0x37474f)]); }
+function geoDog() { return mergeGeometries([colored(at(new THREE.BoxGeometry(0.6, 0.55, 1.3), 0, 0.65, 0), 0xffffff), colored(at(new THREE.BoxGeometry(0.5, 0.5, 0.5), 0, 1.0, 0.75), 0xffffff), ...legs(0.2, 0.45, 0.4, 0x5d4037)]); }
+
 function geoLandmark(shape, hex) {
   const c = new THREE.Color(hex);
   const dark = c.clone().multiplyScalar(0.7).getHex();
@@ -135,6 +156,21 @@ const CAPK = MOBILE ? 0.6 : 1;
 // ---------- Tipos ----------
 // s = radio de huella, cap = capacidad máxima, colors = paleta de tinte
 export const KINDS = {
+  cup: { s: 0.045, g: 6, geo: geoCup, cap: 900, colors: [0xffffff, 0xff8a80, 0x80d8ff, 0xffe57f], indoor: true },
+  book: { s: 0.06, g: 6, geo: geoBook, cap: 900, colors: [0xc62828, 0x1565c0, 0x2e7d32, 0x6a1b9a, 0xef6c00], indoor: true },
+  lamp: { s: 0.09, g: 6, geo: geoLamp, cap: 500, colors: [0xffffff], indoor: true },
+  chair: { s: 0.11, g: 6, geo: geoChair, cap: 1100, colors: [0x8d6e63, 0xa1887f, 0x6d4c41, 0xffffff], indoor: true },
+  table: { s: 0.17, g: 6, geo: geoTable, cap: 600, colors: [0x8d6e63, 0xbcaaa4, 0x795548], indoor: true },
+  sofa: { s: 0.23, g: 6, geo: geoSofa, cap: 450, colors: [0x5c6bc0, 0xef5350, 0x26a69a, 0x8d6e63], indoor: true },
+  bed: { s: 0.27, g: 6, geo: geoBed, cap: 350, colors: [0x90caf9, 0xf48fb1, 0xa5d6a7, 0xfff59d], indoor: true },
+  wall: { s: 0.27, g: 5, geo: geoWall, cap: 1600, colors: [0xffffff, 0xfff3e0, 0xe3f2fd], indoor: true },
+  person: { s: 0.07, g: 6, geo: geoPerson, cap: 3600, colors: [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047, 0x8e24aa, 0xfb8c00, 0xeceff1, 0x212121] },
+  cone: { s: 0.055, g: 6, geo: geoCone, cap: 1300, colors: [0xffffff] },
+  bin: { s: 0.09, g: 6, geo: geoBin, cap: 1300, colors: [0x2e7d32, 0x1565c0, 0x616161] },
+  hydrant: { s: 0.065, g: 6, geo: geoHydrant, cap: 900, colors: [0xffffff, 0xfff176] },
+  bike: { s: 0.13, g: 6, geo: geoBike, cap: 1100, colors: [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835] },
+  bench: { s: 0.17, g: 6, geo: geoBench, cap: 1000, colors: [0xffffff] },
+  dog: { s: 0.075, g: 6, geo: geoDog, cap: 900, colors: [0xd7a86e, 0x3e2723, 0xffffff, 0x8d6e63] },
   tree: { s: 0.38, geo: geoTree, cap: 13000, colors: [0xffffff, 0xd8ffd8, 0xe8f5c8] },
   palm: { s: 0.4, geo: geoPalm, cap: 1300, colors: [0xffffff] },
   car: { s: 0.27, geo: geoCar, cap: 3800, colors: [0xe53935, 0x1e88e5, 0xfdd835, 0xffffff, 0x43a047, 0x212121, 0xfb8c00] },
@@ -241,7 +277,7 @@ export class World {
     const inst = this.free[kind].pop();
     if (inst === undefined) return null;
     const s = def.s * (opts.scale ?? (0.85 + Math.random() * 0.35));
-    const o = { kind, s, pos: pos.clone().normalize(), yaw: Math.random() * Math.PI * 2, alive: true, inst, cell: -1, home: opts.home || null, pts: opts.pts ?? Math.ceil(s * s * 10), area: opts.area ?? null, respawn: opts.respawn ?? true };
+    const o = { kind, s, pos: pos.clone().normalize(), yaw: opts.yaw ?? Math.random() * Math.PI * 2, g: def.g ?? 1, alive: true, inst, cell: -1, home: opts.home || null, pts: opts.pts ?? Math.ceil(s * s * 10), area: opts.area ?? null, respawn: opts.respawn ?? true };
     this.objs.push(o);
     this.count[kind]++;
     if (inst + 1 > this.hi[kind]) { this.hi[kind] = inst + 1; this.meshes[kind].count = this.hi[kind]; }
@@ -276,6 +312,7 @@ export class World {
       const n = 3 + Math.floor(Math.random() * 8);
       for (let i = 0; i < n; i++) { const q = offsetPoint(p, Math.random() * 1.8, Math.random() * 7); if (isLand(q)) this.spawn('house', q, { home: 'land' }); }
       if (Math.random() < 0.6) this.spawn('car', offsetPoint(p, Math.random() * 2, Math.random() * 7), { home: 'land' });
+      for (let i = 0; i < 3; i++) this.spawn(Math.random() < 0.7 ? 'person' : 'dog', offsetPoint(p, Math.random() * 2, Math.random() * 7), { home: 'land' });
     }
     guard = 0;
     while (this.count.palm < KINDS.palm.cap * 0.62 && guard++ < 3000) {
@@ -306,6 +343,14 @@ export class World {
     put('house', Math.round(26 * c.w * mult), rad * 0.3, rad);
     put('car', Math.round(30 * c.w * mult), 0, rad * 0.9);
     put('tree', Math.round(20 * c.w * mult), rad * 0.4, rad * 1.3);
+    const t = MOBILE ? 0.6 : 1;
+    put('person', Math.round(20 * c.w * mult * t), 0, rad * 1.1);
+    put('cone', Math.round(7 * c.w * mult * t), 0, rad);
+    put('bin', Math.round(7 * c.w * mult * t), 0, rad);
+    put('hydrant', Math.round(5 * c.w * mult * t), 0, rad);
+    put('bike', Math.round(6 * c.w * mult * t), 0, rad);
+    put('bench', Math.round(6 * c.w * mult * t), rad * 0.2, rad * 1.1);
+    put('dog', Math.round(5 * c.w * mult * t), rad * 0.2, rad * 1.2);
   }
 
   /** Busca un lugar para reaparecer que no esté encima de ningún hueco */
@@ -403,15 +448,51 @@ export class World {
   /** Agrega objetos hasta la densidad que pide el tamaño actual del planeta */
   topUp(holes) {
     let budget = 120;
-    for (const k of ['tree', 'palm', 'car', 'house', 'building', 'tower', 'boat', 'bomb', 'gold']) {
+    for (const k of ['tree', 'palm', 'car', 'house', 'building', 'tower', 'boat', 'bomb', 'gold', 'person', 'cone', 'bin', 'hydrant', 'bike', 'bench', 'dog']) {
       const want = Math.min(KINDS[k].cap, Math.round(this.base[k] * this.factor));
       while (this.count[k] < want && budget-- > 0) {
-        const home = k === 'boat' ? 'sea' : k === 'palm' ? 'tropic' : ['car', 'building', 'tower'].includes(k) ? CITIES[Math.floor(Math.random() * CITIES.length)] : 'land';
+        const home = k === 'boat' ? 'sea' : k === 'palm' ? 'tropic' : ['car', 'building', 'tower', 'person', 'cone', 'bin', 'hydrant', 'bike', 'bench'].includes(k) ? CITIES[Math.floor(Math.random() * CITIES.length)] : 'land';
         const p = this.findSpawn({ kind: k, s: KINDS[k].s, home }, holes);
         if (!p) break;
         this.spawn(k, p, { home, ...(k === 'bomb' ? { scale: 1, pts: 0 } : k === 'gold' ? { scale: 1, pts: 60 } : {}) });
       }
     }
+  }
+
+  /** Saca lo que haya en un área (para construir una casa nueva encima) */
+  clearArea(center, rad, now) {
+    const list = [];
+    this.query(center, rad, (o) => { if (o.alive && !o.landmark && surfDist(center, o.pos) < rad + o.s) list.push(o); });
+    for (const o of list) {
+      o.alive = false; this.removeFromGrid(o); this.writeMatrix(o);
+      if (o.respawn) this.respawnQueue.push({ o, at: now + 15 + Math.random() * 20 }); else this.release(o);
+    }
+  }
+
+  /** Casa donde nace un hueco: paredes en anillo + muebles adentro */
+  buildHome(center, now) {
+    const rad = 1.0;
+    this.clearArea(center, rad + 0.35, now);
+    const t1 = tangentize(new THREE.Vector3(0, 1, 0), center);
+    const t2 = new THREE.Vector3().crossVectors(center, t1);
+    const n = 12;
+    const wq = new THREE.Quaternion(), x0 = new THREE.Vector3(), tg = new THREE.Vector3(), cr = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const p = offsetPoint(center, rad, a);
+      tg.copy(t1).multiplyScalar(-Math.sin(a)).addScaledVector(t2, Math.cos(a)); tangentize(tg, p);
+      x0.set(1, 0, 0).applyQuaternion(wq.setFromUnitVectors(_Y, p));
+      cr.crossVectors(x0, tg);
+      const yaw = Math.atan2(cr.dot(p), x0.dot(tg));
+      this.spawn('wall', p, { yaw, scale: 1, respawn: false, pts: 3 });
+    }
+    const mix = ['cup', 'cup', 'cup', 'cup', 'book', 'book', 'book', 'book', 'book', 'chair', 'chair', 'chair', 'chair', 'chair', 'chair',
+      'lamp', 'lamp', 'lamp', 'table', 'table', 'table', 'sofa', 'sofa', 'bed', 'dog', 'cup', 'book', 'chair', 'person', 'person', 'cup', 'book', 'lamp', 'chair'];
+    for (const k of mix) {
+      const p = offsetPoint(center, 0.18 + Math.sqrt(Math.random()) * (rad - 0.3), Math.random() * 7);
+      this.spawn(k, p, { respawn: false, scale: 0.85 + Math.random() * 0.3, pts: 1 });
+    }
+    return { pos: center.clone(), rad };
   }
 
   /** Escombros que suelta un hueco partido por una bomba */

@@ -17,7 +17,7 @@
   <div id="hud" class="hidden">
     <div id="board"></div>
     <div id="top">
-      <div id="timer">5:00</div>
+      <div id="timer"></div>
       <div id="pop"></div>
       <div id="frenzy" class="hidden">🔥 FRENESÍ ×2</div>
       <div id="camoState" class="hidden"></div>
@@ -26,15 +26,19 @@
       <div id="score">0</div>
       <div id="combo"></div>
       <div id="mons">🏛️ 0</div>
+      <div id="missions"></div>
     </div>
+    <div id="team" class="hidden"><div id="teamList"></div><button id="teamLeave">Salir (Q)</button></div>
+    <div id="inviteBox" class="hidden"></div>
     <div id="feed"></div>
     <div id="bottom">
       <div id="title">Bache</div>
       <div id="bar"><div id="barFill"></div></div>
       <div id="bombs"></div>
-      <div id="hint">Mouse: moverse · Clic / Espacio: bomba 💣 · Shift / clic derecho: turbo · E: camuflaje 👻</div>
+      <div id="hint">Mouse: moverse · Clic/Espacio: bomba 💣 · Shift/clic der.: turbo · E: camuflaje 👻 · T: manada 🤝</div>
     </div>
     <div id="mobileBtns">
+      <button id="btnTeam">🤝</button>
       <button id="btnCamo">👻</button>
       <button id="btnBoost">⚡</button>
       <button id="btnBomb">💣</button>
@@ -51,13 +55,13 @@
       <select id="city"></select>
       <button id="play" class="big">¡A TRAGAR!</button>
       <ul class="rules">
-        <li>Comé lo que sea más chico que vos: árboles, carros, casas, edificios… y monumentos.</li>
-        <li>Comé huecos más chicos. Cuidado con los grandes.</li>
-        <li>Más grande = más lento. Los gigantes se evaporan de a poco.</li>
-        <li>💣 Recogé bombas y tirálas a un hueco gigante para partirlo: suelta su comida.</li>
-        <li>👻 Camuflaje (se carga en 1 min): te volvés invisible y los demás te pasan por encima. Al reaparecer hay 8 s de aviso: el que no salga, adentro.</li>
-        <li>🌍 El planeta crece cuando entran más jugadores.</li>
-        <li>💛 Lluvias de oro en ciudades al azar. Últimos 30 s: puntos ×2.</li>
+        <li>🏠 Nacés chiquitito adentro de una casa: comete los muebles, rompé las paredes y salí.</li>
+        <li>🌆 Personas, conos, carros, casas, edificios, rascacielos… y monumentos reales.</li>
+        <li>🕳️ Tragate huecos más chicos. Más grande = más lento. Los gigantes se evaporan.</li>
+        <li>💣 Las bombas parten a los gigantes y sueltan su comida.</li>
+        <li>🤝 Armá manada (hasta 3): no se comen entre ustedes y si rodean juntos a un gigante, ⚔️ lo cazan.</li>
+        <li>👻 Camuflaje: invisible 30 s; al volver hay 8 s de aviso y el que no salga, adentro.</li>
+        <li>✅ Misiones, 🔥 frenesí, 💛 lluvias de oro. El mundo nunca se acaba.</li>
       </ul>
       <div id="records"></div>
     </div>
@@ -67,18 +71,9 @@
     <div class="card">
       <h2>¡Te tragó <span id="killer"></span>!</h2>
       <p id="deadStats"></p>
-      <button id="revive" class="big">Revivir</button>
-      <p class="sub">Conservás tus puntos. Espacio para revivir.</p>
-    </div>
-  </div>
-
-  <div id="end" class="overlay hidden">
-    <div class="card wide">
-      <h2>Fin de la ronda</h2>
-      <div id="endPlace"></div>
-      <table id="endTable"></table>
-      <div id="endStats"></div>
-      <button id="again" class="big">Otra ronda</button>
+      <button id="reviveMate" class="big mate hidden">Nacer con tu manada</button>
+      <button id="revive" class="big">Nacer de nuevo</button>
+      <p class="sub">Espacio para nacer de nuevo.</p>
     </div>
   </div>
 

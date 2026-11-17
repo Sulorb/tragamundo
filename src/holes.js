@@ -1,23 +1,28 @@
 import * as THREE from 'three';
-import { R, CITIES, surfDist, dirTo, moveOnSphere, tangentize, offsetPoint, randomLand } from './geo.js';
+import { R, CITIES, surfDist, dirTo, tangentize, offsetPoint, randomLand, isLand } from './geo.js';
 
-export const START_A = 0.5;
-export const GAIN = 0.05; // área ganada = s² * GAIN
+export const START_R = 0.14;
+export const START_A = START_R * START_R;
+export const GAIN = 0.05; // área ganada = s² * GAIN * g(tipo)
 export const EAT_RATIO = 0.82; // un objeto entra si s < r * EAT_RATIO
 export const HOLE_RATIO = 1.12; // un hueco come a otro si r > r2 * HOLE_RATIO
 export const MAX_BOMBS = 3;
+export const WALL_R = 0.33; // tamaño para romper las paredes de la casa
 export const CAMO = { charge: 60, fade: 8, hidden: 30, reveal: 8 };
+export const TEAM_MAX = 3;
+export const PACK = { touch: 0.5, need: 0.75, time: 2.5 }; // cacería en manada
 
 export const TITLES = [
-  [0, 'Bache'], [1, 'Alcantarilla'], [2, 'Socavón'], [3.6, 'Cráter'], [6, 'Sumidero'], [9.5, 'Abismo'], [14, 'Agujero Negro'], [21, 'Devoramundos'],
+  [0, 'Grieta'], [0.3, 'Bache'], [0.6, 'Alcantarilla'], [1.2, 'Socavón'], [2.2, 'Cráter'], [3.8, 'Sumidero'], [6, 'Abismo'], [9, 'Agujero Negro'], [13, 'Devoramundos'],
 ];
 export function titleOf(r) { let t = TITLES[0][1]; for (const [min, name] of TITLES) if (r >= min) t = name; return t; }
 export function titleIndex(r) { let k = 0; TITLES.forEach(([min], i) => { if (r >= min) k = i; }); return k; }
+export function fmtSize(r) { return r < 1 ? `${Math.round(r * 100)} cm` : `${r.toFixed(1)} m`; }
 
 const BOT_NAMES = ['Tragón', 'La Sinkhole', 'Don Bache', 'Pozo Loco', 'Mr. Hoyo', 'Abismito', 'El Socavón', 'Cráter Kid', 'Doña Grieta',
   'Agujerín', 'Bachemán', 'Glotón 3000', 'Topo Gigio', 'Zanja', 'Hoyuelo', 'Remolino', 'Vórtice', 'Sumidero Sam',
-  'Comelón', 'La Fosa', 'Barranco', 'Tripa Negra', 'Don Pozo', 'Hoyito Feliz'];
-const BOT_COLORS = [0xff5252, 0xffab40, 0xffee58, 0x69f0ae, 0x40c4ff, 0xb388ff, 0xff80ab, 0x64ffda, 0xeeff41, 0xff6e40, 0x8c9eff, 0xea80fc, 0x18ffff, 0xccff90, 0xffd180, 0xf48fb1, 0x80cbc4, 0xffcc80, 0xb39ddb, 0xa5d6a7, 0xef9a9a, 0x90caf9, 0xfff59d, 0xbcaaa4];
+  'Comelón', 'La Fosa', 'Barranco', 'Tripa Negra', 'Don Pozo', 'Hoyito Feliz', 'Chupamundo', 'Lady Cráter'];
+const BOT_COLORS = [0xff5252, 0xffab40, 0xffee58, 0x69f0ae, 0x40c4ff, 0xb388ff, 0xff80ab, 0x64ffda, 0xeeff41, 0xff6e40, 0x8c9eff, 0xea80fc, 0x18ffff, 0xccff90, 0xffd180, 0xf48fb1, 0x80cbc4, 0xffcc80, 0xb39ddb, 0xa5d6a7, 0xef9a9a, 0x90caf9, 0xfff59d, 0xbcaaa4, 0xff8a80, 0x84ffff];
 
 let nextId = 1;
 export class Hole {
@@ -30,20 +35,23 @@ export class Hole {
     this.dir = new THREE.Vector3(1, 0, 0);
     this.alive = false;
     this.score = 0;
-    this.kills = 0; this.eaten = 0; this.splits = 0; this.deaths = 0;
+    this.kills = 0; this.eaten = 0; this.splits = 0; this.deaths = 0; this.packs = 0;
     this.landmarks = [];
     this.bombs = 0;
     this.setArea(START_A);
-    this.stun = 0; this.rush = 0; this.boost = false; this.throttle = 1; this.bombCd = 0;
+    this.stun = 0; this.rush = 0; this.boost = false; this.throttle = 1; this.bombCd = 0; this.shield = 0;
     this.combo = 0; this.comboT = 0;
     this.bestR = this.r;
     this.camo = 'none'; this.camoT = 0; this.camoCharge = isPlayer ? 0 : Math.random() * 50;
-    this.respawnAt = 0;
+    this.respawnAt = 0; this.bornAt = 0;
     this.killer = null;
+    this.home = null; // casa donde nació (paredes que lo encierran mientras es chico)
+    this.team = null; this.truceTeam = null; this.truceUntil = 0;
+    this.siege = 0; this.siegeTeam = null;
     this.ai = isPlayer ? null : {
       think: Math.random() * 0.3, desired: new THREE.Vector3(), wander: null, wanderT: 0,
       aggr: 0.3 + Math.random() * 0.7, greed: 0.5 + Math.random() * 0.8, caution: 0.5 + Math.random() * 0.8,
-      turn: 3 + Math.random() * 3, fleeing: false, pace: 0.72 + Math.random() * 0.22,
+      social: Math.random(), turn: 3 + Math.random() * 3, fleeing: false, pace: 0.72 + Math.random() * 0.22, rejectUntil: 0,
     };
   }
   /** Puede comer y ser comido (fuera del camuflaje o mientras se desvanece) */
@@ -56,7 +64,8 @@ export class Hole {
   }
   setArea(A) { this.A = Math.max(START_A * 0.8, A); this.r = Math.sqrt(this.A); }
   speed() {
-    let v = 9.5 / (1 + 0.075 * this.r);
+    // chiquito = lento en absoluto (pero rápido para su tamaño); grande = lento
+    let v = Math.min(9.5 / (1 + 0.075 * this.r), 1.3 + this.r * 6.2);
     if (this.boost) v *= 1.65;
     if (this.stun > 0) v *= 0.3;
     if (this.rush > 0) v *= 1.35;
@@ -65,11 +74,20 @@ export class Hole {
     if (this.camo === 'reveal') v *= 0.3;
     return v;
   }
-  spawnAt(p) {
+  spawnAt(p, A = START_A) {
     this.pos.copy(p).normalize();
     this.dir.set(0, 1, 0); tangentize(this.dir, this.pos);
-    this.setArea(START_A); this.alive = true; this.bombs = 0; this.combo = 0; this.stun = 0; this.shield = 3; this.camo = 'none'; this.camoT = 0;
+    this.setArea(A); this.alive = true; this.bombs = 0; this.combo = 0; this.stun = 0; this.shield = 3;
+    this.camo = 'none'; this.camoT = 0; this.home = null; this.siege = 0; this.siegeTeam = null;
   }
+}
+
+/** Aliados: misma manada o tregua recién salidos de una */
+export function allied(a, b, now) {
+  if (a.team && a.team === b.team) return true;
+  if (a.truceTeam && a.truceTeam === b.team && now < a.truceUntil) return true;
+  if (b.truceTeam && b.truceTeam === a.team && now < b.truceUntil) return true;
+  return false;
 }
 
 export function makeBots(n) {
@@ -81,18 +99,19 @@ export function makeBots(n) {
 export function safeSpawn(holes, preferCity = true) {
   const p = new THREE.Vector3();
   for (let t = 0; t < 30; t++) {
-    if (preferCity && Math.random() < 0.75) {
+    if (preferCity && Math.random() < 0.8) {
       const c = CITIES[Math.floor(Math.random() * CITIES.length)];
-      offsetPoint(c.pos, 3 + Math.random() * 6, Math.random() * 7, p);
+      offsetPoint(c.pos, 2 + Math.random() * 6, Math.random() * 7, p);
+      if (!isLand(p)) continue;
     } else randomLand(p);
     let ok = true;
-    for (const h of holes) if (h.alive && h.r > 1.2 && surfDist(h.pos, p) < h.r * 3 + 10) { ok = false; break; }
+    for (const h of holes) if (h.alive && h.r > 0.6 && surfDist(h.pos, p) < h.r * 3 + 6) { ok = false; break; }
     if (ok) return p;
   }
   return p;
 }
 
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion();
 
 /** Gira dir hacia desired (ambos tangentes en n) a lo sumo maxAng */
 export function steer(dir, desired, n, maxAng) {
@@ -108,61 +127,84 @@ export function steer(dir, desired, n, maxAng) {
 /** IA de un hueco */
 export function thinkBot(h, game) {
   const ai = h.ai;
-  const { holes, world, event } = game;
+  const { holes, world, event, now } = game;
   const des = ai.desired.set(0, 0, 0);
   const flee = _b.set(0, 0, 0);
   let threat = 0;
   let bestScore = 0, bestPos = null, bestHole = null;
+  const inHouse = h.home && h.r < WALL_R;
+
+  // ¿cacería en manada?
+  let pack = null;
+  if (h.team && h.team.members.length > 1) {
+    let best = 0;
+    for (const o of holes) {
+      if (!o.alive || !o.solid() || allied(h, o, now) || o.r <= h.r * HOLE_RATIO) continue;
+      const d = surfDist(h.pos, o.pos);
+      if (d > 30 + o.r) continue;
+      let sum = 0, n = 0;
+      for (const m of h.team.members) if (m.alive && m.solid() && surfDist(m.pos, o.pos) < 30 + o.r) { sum += m.A; n++; }
+      if (n >= 2 && sum >= o.A * PACK.need * 1.05 && o.A > best) { best = o.A; pack = o; }
+    }
+  }
 
   for (const o of holes) {
-    if (o === h || !o.alive || o.camo === 'hidden') continue;
+    if (o === h || !o.alive || o.camo === 'hidden' || allied(h, o, now)) continue;
     const d = surfDist(h.pos, o.pos);
     if (o.camo === 'reveal') {
-      // aviso de reaparición: huir si cabe adentro
       if (o.r > h.r * HOLE_RATIO && d < o.r + 2) { threat = 1; flee.addScaledVector(dirTo(h.pos, o.pos, _a), -3); }
       continue;
     }
+    if (o === pack) continue;
     if (o.r > h.r * HOLE_RATIO) {
-      const danger = o.r + 5 + o.r * 1.2 * ai.caution;
+      const danger = o.r * (1.3 + 1.2 * ai.caution) + 1 + h.r * 4;
       if (d < danger) {
         const w = (danger - d) / danger;
         threat = Math.max(threat, w);
         flee.addScaledVector(dirTo(h.pos, o.pos, _a), -w * 2);
       }
-      // ¿tirarle una bomba?
       if (h.bombs > 0 && o.r > Math.max(1.6, h.r * 1.15) && d < 14 + h.r && d > o.r * 0.6 && Math.random() < 0.25 * ai.aggr + (o === game.leader ? 0.2 : 0)) {
         game.throwBomb(h, dirTo(h.pos, o.pos, _a));
       }
-    } else if (h.r > o.r * HOLE_RATIO * 1.03) {
-      if (d < 16 + h.r * 2) {
-        const sc = (o.A * 6 * ai.aggr + (o.isPlayer ? 0.5 : 0)) / (d + 2);
+    } else if (h.r > o.r * HOLE_RATIO * 1.03 && !(o.shield > 0)) {
+      if (d < Math.min(16 + h.r * 2, 2 + h.r * 8)) {
+        const sc = (o.A * 6 * ai.aggr + (o.isPlayer ? 0.05 : 0)) / (d + 0.5 + h.r);
         if (sc > bestScore) { bestScore = sc; bestPos = o.pos; bestHole = o; }
       }
     }
   }
 
-  world.query(h.pos, 9 + h.r * 3, (o) => {
+  const look = Math.min(9 + h.r * 3, 1.2 + h.r * 10);
+  world.query(h.pos, look, (o) => {
     if (!o.alive) return;
+    if (inHouse && surfDist(h.home.pos, o.pos) > h.home.rad - 0.05) return;
     let v;
-    if (o.kind === 'bomb') { if (h.bombs >= 3) return; v = 0.5 * ai.aggr; }
+    if (o.kind === 'bomb') { if (h.bombs >= 3) return; v = 0.5 * ai.aggr * Math.min(1, h.r); }
     else {
       if (o.s > h.r * EAT_RATIO) return;
-      v = o.s * o.s * (o.kind === 'gold' ? 6 : o.landmark ? 3 : 1) * ai.greed;
+      v = o.s * o.s * (o.kind === 'gold' ? 6 : o.landmark ? 3 : o.kind === 'wall' ? 2 : 1) * ai.greed;
       if (o.kind === 'debris') v *= 2;
     }
     const d = surfDist(h.pos, o.pos);
-    const sc = v / (d + 1.2);
+    const sc = v / (d + 0.3 + h.r);
     if (sc > bestScore) { bestScore = sc; bestPos = o.pos; bestHole = null; }
   });
 
-  if (bestPos) dirTo(h.pos, bestPos, des);
+  if (pack) {
+    // rodear el borde de la presa sin meterse
+    const d = surfDist(h.pos, pack.pos);
+    dirTo(h.pos, pack.pos, des);
+    if (d < pack.r + h.r * 0.1) des.negate();
+    else if (d < pack.r + h.r * PACK.touch) des.crossVectors(h.pos, des).multiplyScalar(0.6);
+  } else if (bestPos) dirTo(h.pos, bestPos, des);
   else {
-    // pasear: hacia el evento si está cerca o hacia una ciudad
-    if (event && surfDist(h.pos, event.city.pos) < R) ai.wander = event.city.pos;
-    else if (!ai.wander || game.now > ai.wanderT || surfDist(h.pos, ai.wander) < 3) {
+    const lead = h.team && h.team.members.filter((m) => m.alive && m !== h).sort((a, b) => b.r - a.r)[0];
+    if (lead && surfDist(h.pos, lead.pos) > 6 + lead.r * 2) ai.wander = lead.pos;
+    else if (event && event.city && surfDist(h.pos, event.city.pos) < R) ai.wander = event.city.pos;
+    else if (!ai.wander || now > ai.wanderT || surfDist(h.pos, ai.wander) < 1 + h.r) {
       const c = CITIES[Math.floor(Math.random() * CITIES.length)];
-      ai.wander = surfDist(h.pos, c.pos) < R * 0.8 ? c.pos : offsetPoint(h.pos, 20, Math.random() * 7);
-      ai.wanderT = game.now + 25;
+      ai.wander = surfDist(h.pos, c.pos) < R * 0.8 && h.r > 0.5 ? c.pos : offsetPoint(h.pos, 3 + h.r * 10, Math.random() * 7);
+      ai.wanderT = now + 25;
     }
     dirTo(h.pos, ai.wander, des);
   }
@@ -170,7 +212,7 @@ export function thinkBot(h, game) {
   ai.fleeing = threat > 0.15;
   if (ai.fleeing) des.multiplyScalar(0.4).add(flee);
   tangentize(des, h.pos);
-  // camuflaje: para escapar o para emboscar
   if (h.camo === 'none' && h.camoCharge >= CAMO.charge && h.r > 1.5 && (threat > 0.6 || Math.random() < 0.012 * ai.aggr)) game.startCamo(h);
-  h.boost = h.solid() && (threat > 0.45 && h.A > 1.2) || (bestHole && surfDist(h.pos, bestHole.pos) < 7 + h.r && h.A > 2 && ai.aggr > 0.6);
+  h.boost = h.solid() && h.A > 0.6 && ((threat > 0.45) || (bestHole && surfDist(h.pos, bestHole.pos) < 4 + h.r * 2 && ai.aggr > 0.6) || (pack && surfDist(h.pos, pack.pos) > pack.r + 4));
+  void _c;
 }
